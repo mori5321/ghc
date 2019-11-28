@@ -533,10 +533,10 @@ closureGrowth expander sizer group abs_ids = go
     go (ClosureSk _ clo_fvs rhs)
       -- If no binder of the @group@ occurs free in the closure, the lifting
       -- won't have any effect on it and we can omit the recursive call.
-      | n_occs == 0 = 0
+      | group `varSetDisjointDVarSet` clo_fvs' = 0
       -- Otherwise, we account the cost of allocating the closure and add it to
       -- the closure growth of its RHS.
-      | otherwise   = mkIntWithInf cost + go rhs
+      | otherwise                              = mkIntWithInf cost + go rhs
       where
         n_occs = sizeDVarSet (clo_fvs' `dVarSetIntersectVarSet` group)
         -- What we close over considering prior lifting decisions
