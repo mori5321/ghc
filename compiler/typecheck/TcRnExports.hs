@@ -184,8 +184,8 @@ tcRnExports explicit_mod exports
         ; let real_exports
                  | explicit_mod = exports
                  | has_main
-                          = Just (noLoc [noLoc (IEVar noExtField
-                                     (noLoc (IEName $ noLoc default_main)))])
+                          = Just (noLoc [noLoc (IEVar noAnn
+                                     (noLoc (IEName $ noLocA default_main)))])
                         -- ToDo: the 'noLoc' here is unhelpful if 'main'
                         --       turns out to be out of scope
                  | otherwise = Nothing
@@ -534,8 +534,8 @@ lookupChildrenExport spec_parent rdr_items =
 
           case name of
             NameNotFound -> do { ub <- reportUnboundName unboundName
-                               ; let l = getLoc n
-                               ; return (Left (L l (IEName (L l ub))))}
+                               ; let l = getLoc $ ieLWrappedName n
+                               ; return (Left (L (locA l) (IEName (L l ub))))}
             FoundFL fls -> return $ Right (L (getLoc n) fls)
             FoundName par name -> do { checkPatSynParent spec_parent par name
                                      ; return

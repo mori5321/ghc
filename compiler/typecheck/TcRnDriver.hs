@@ -1788,7 +1788,7 @@ check_main dflags tcg_env explicit_mod_hdr export_ies
         ; (ev_binds, main_expr)
                <- checkConstraints skol_info [] [] $
                   addErrCtxt mainCtxt    $
-                  tcMonoExpr (L loc (HsVar noExtField (L loc main_name)))
+                  tcMonoExpr (L loc (HsVar noExtField (L (noAnnSrcSpan loc) main_name)))
                              (mkCheckExpType io_ty)
 
                 -- See Note [Root-main Id]
@@ -2180,11 +2180,11 @@ tcUserStmt (L loc (BodyStmt _ expr _ _))
         ; uniq <- newUnique
         ; interPrintName <- getInteractivePrintName
         ; let fresh_it  = itName uniq loc
-              matches   = [mkMatch (mkPrefixFunRhs (L loc fresh_it)) [] rn_expr
+              matches   = [mkMatch (mkPrefixFunRhs (L (noAnnSrcSpan loc) fresh_it)) [] rn_expr
                                    (noLoc emptyLocalBinds)]
               -- [it = expr]
               the_bind  = L loc $ (mkTopFunBind FromSource
-                                     (L loc fresh_it) matches)
+                                     (L (noAnnSrcSpan loc) fresh_it) matches)
                                          { fun_ext = fvs }
               -- Care here!  In GHCi the expression might have
               -- free variables, and they in turn may have free type variables
@@ -2197,7 +2197,7 @@ tcUserStmt (L loc (BodyStmt _ expr _ _))
 
               -- [it <- e]
               bind_stmt = L loc $ BindStmt noExtField
-                                       (L loc (VarPat noExtField (L loc fresh_it)))
+                                       (L loc (VarPat noExtField (L (noAnnSrcSpan loc) fresh_it)))
                                        (nlHsApp ghciStep rn_expr)
                                        (mkRnSyntaxExpr bindIOName)
                                        noSyntaxExpr
@@ -2446,8 +2446,8 @@ getGhciStepIO = do
 
         step_ty = noLoc $ HsForAllTy
                      { hst_fvf = ForallInvis
-                     , hst_bndrs = [noLoc $ UserTyVar noExtField (noLoc a_tv)]
-                     , hst_xforall = noExtField
+                     , hst_bndrs = [noLoc $ UserTyVar noExtField (noLocA a_tv)]
+                     , hst_xforall = noAnn
                      , hst_body  = nlHsFunTy ghciM ioM }
 
         stepTy :: LHsSigWcType GhcRn
@@ -2713,12 +2713,12 @@ getModuleInterface hsc_env mod
   = runTcInteractive hsc_env $
     loadModuleInterface (text "getModuleInterface") mod
 
-tcRnLookupRdrName :: HscEnv -> Located RdrName
+tcRnLookupRdrName :: HscEnv -> LocatedA RdrName
                   -> IO (Messages, Maybe [Name])
 -- ^ Find all the Names that this RdrName could mean, in GHCi
 tcRnLookupRdrName hsc_env (L loc rdr_name)
   = runTcInteractive hsc_env $
-    setSrcSpan loc           $
+    setSrcSpan (locA loc)    $
     do {   -- If the identifier is a constructor (begins with an
            -- upper-case letter), then we need to consider both
            -- constructor and type class identifiers.
@@ -2857,7 +2857,7 @@ tcDump env
     full_dump  = pprLHsBinds (tcg_binds env)
         -- NB: foreign x-d's have undefined's in their types;
         --     hence can't show the tc_fords
-    ast_dump = showAstData NoBlankSrcSpan (tcg_binds env)
+    ast_dump = showAstData NoBlankSrcSpan NoBlankApiAnnotations (tcg_binds env)
 
 -- It's unpleasant having both pprModGuts and pprModDetails here
 pprTcGblEnv :: TcGblEnv -> SDoc

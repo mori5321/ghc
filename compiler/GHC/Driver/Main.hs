@@ -284,7 +284,7 @@ ioMsgMaybe' ioA = do
 -- -----------------------------------------------------------------------------
 -- | Lookup things in the compiler's environment
 
-hscTcRnLookupRdrName :: HscEnv -> Located RdrName -> IO [Name]
+hscTcRnLookupRdrName :: HscEnv -> LocatedA RdrName -> IO [Name]
 hscTcRnLookupRdrName hsc_env0 rdr_name
   = runInteractiveHsc hsc_env0 $
     do { hsc_env <- getHscEnv
@@ -360,7 +360,9 @@ hscParse' mod_summary
             liftIO $ dumpIfSet_dyn dflags Opt_D_dump_parsed "Parser"
                         FormatHaskell (ppr rdr_module)
             liftIO $ dumpIfSet_dyn dflags Opt_D_dump_parsed_ast "Parser AST"
-                        FormatHaskell (showAstData NoBlankSrcSpan rdr_module)
+                        FormatHaskell (showAstData NoBlankSrcSpan
+                                                   NoBlankApiAnnotations
+                                                   rdr_module)
             liftIO $ dumpIfSet_dyn dflags Opt_D_source_stats "Source Statistics"
                         FormatText (ppSourceStats False rdr_module)
             when (not $ isEmptyBag errs) $ throwErrors errs
@@ -417,7 +419,8 @@ extract_renamed_stuff mod_summary tc_result = do
 
     dflags <- getDynFlags
     liftIO $ dumpIfSet_dyn dflags Opt_D_dump_rn_ast "Renamer"
-                FormatHaskell (showAstData NoBlankSrcSpan rn_info)
+                FormatHaskell
+                      (showAstData NoBlankSrcSpan NoBlankApiAnnotations rn_info)
 
     -- Create HIE files
     when (gopt Opt_WriteHie dflags) $ do
@@ -1850,7 +1853,7 @@ hscParseStmtWithLocation source linenumber stmt =
 hscParseType :: String -> Hsc (LHsType GhcPs)
 hscParseType = hscParseThing parseType
 
-hscParseIdentifier :: HscEnv -> String -> IO (Located RdrName)
+hscParseIdentifier :: HscEnv -> String -> IO (LocatedA RdrName)
 hscParseIdentifier hsc_env str =
     runInteractiveHsc hsc_env $ hscParseThing parseIdentifier str
 
@@ -1878,7 +1881,8 @@ hscParseThingWithLocation source linenumber parser str
             liftIO $ dumpIfSet_dyn dflags Opt_D_dump_parsed "Parser"
                         FormatHaskell (ppr thing)
             liftIO $ dumpIfSet_dyn dflags Opt_D_dump_parsed_ast "Parser AST"
-                        FormatHaskell (showAstData NoBlankSrcSpan thing)
+                      FormatHaskell
+                        (showAstData NoBlankSrcSpan NoBlankApiAnnotations thing)
             return thing
 
 

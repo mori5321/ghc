@@ -148,9 +148,10 @@ hsLitType (XLit nec)         = noExtCon nec
 
 shortCutLit :: DynFlags -> OverLitVal -> TcType -> Maybe (HsExpr GhcTcId)
 shortCutLit dflags (HsIntegral int@(IL src neg i)) ty
-  | isIntTy ty  && inIntRange  dflags i = Just (HsLit noExtField (HsInt noExtField int))
+  | isIntTy ty  && inIntRange  dflags i
+                                = Just (HsLit noComments (HsInt noExtField int))
   | isWordTy ty && inWordRange dflags i = Just (mkLit wordDataCon (HsWordPrim src i))
-  | isIntegerTy ty = Just (HsLit noExtField (HsInteger src i ty))
+  | isIntegerTy ty = Just (HsLit noComments (HsInteger src i ty))
   | otherwise = shortCutLit dflags (HsFractional (integralFractionalLit neg i)) ty
         -- The 'otherwise' case is important
         -- Consider (3 :: Float).  Syntactically it looks like an IntLit,
@@ -164,11 +165,11 @@ shortCutLit _ (HsFractional f) ty
   | otherwise     = Nothing
 
 shortCutLit _ (HsIsString src s) ty
-  | isStringTy ty = Just (HsLit noExtField (HsString src s))
+  | isStringTy ty = Just (HsLit noComments (HsString src s))
   | otherwise     = Nothing
 
 mkLit :: DataCon -> HsLit GhcTc -> HsExpr GhcTc
-mkLit con lit = HsApp noExtField (nlHsDataCon con) (nlHsLit lit)
+mkLit con lit = HsApp noComments (nlHsDataCon con) (nlHsLit lit)
 
 ------------------------------
 hsOverLitName :: OverLitVal -> Name
@@ -344,7 +345,7 @@ zonkEnvIds (ZonkEnv { ze_id_env = id_env})
   -- It's OK to use nonDetEltsUFM here because we forget the ordering
   -- immediately by creating a TypeEnv
 
-zonkLIdOcc :: ZonkEnv -> Located TcId -> Located Id
+zonkLIdOcc :: ZonkEnv -> LocatedA TcId -> LocatedA Id
 zonkLIdOcc env = mapLoc (zonkIdOcc env)
 
 zonkIdOcc :: ZonkEnv -> TcId -> Id
@@ -641,8 +642,8 @@ zonk_bind _ (PatSynBind _ (XPatSynBind nec)) = noExtCon nec
 zonk_bind _ (XHsBindsLR nec)                 = noExtCon nec
 
 zonkPatSynDetails :: ZonkEnv
-                  -> HsPatSynDetails (Located TcId)
-                  -> HsPatSynDetails (Located Id)
+                  -> HsPatSynDetails (LocatedA TcId)
+                  -> HsPatSynDetails (LocatedA Id)
 zonkPatSynDetails env (PrefixCon as)
   = PrefixCon (map (zonkLIdOcc env) as)
 zonkPatSynDetails env (InfixCon a1 a2)
