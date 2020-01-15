@@ -176,10 +176,7 @@ data Type
         Type
         Type            -- ^ Type application to something other than a 'TyCon'. Parameters:
                         --
-                        --  1) Function: must /not/ be a 'TyConApp' or 'CastTy',
-                        --     must be another 'AppTy', or 'TyVarTy'
-                        --     See Note [Respecting definitional equality] (EQ1) about the
-                        --     no 'CastTy' requirement
+                        --  1) Function: must /not/ be a 'TyConApp'
                         --
                         --  2) Argument type
 
@@ -217,7 +214,7 @@ data Type
         KindCoercion  -- ^ A kind cast. The coercion is always nominal.
                       -- INVARIANT: The cast is never refl.
                       -- INVARIANT: The Type is not a CastTy (use TransCo instead)
-                      -- See Note [Respecting definitional equality] (EQ2) and (EQ3)
+                      -- See Note [Respecting definitional equality] (EQ1) and (EQ2)
 
   | CoercionTy
         Coercion    -- ^ Injection of a Coercion into a type
@@ -545,39 +542,43 @@ Accordingly, by eliminating reflexive casts, splitTyConApp need not worry
 about outermost casts to uphold (EQ). Eliminating reflexive casts is done
 in mkCastTy.
 
-Unforunately, that's not the end of the story. Consider comparing
-  (T a b c)      =?       (T a b |> (co -> <Type>)) (c |> co)
-These two types have the same kind (Type), but the left type is a TyConApp
-while the right type is not. To handle this case, we say that the right-hand
-type is ill-formed, requiring an AppTy never to have a casted TyConApp
-on its left. It is easy enough to pull around the coercions to maintain
-this invariant, as done in Type.mkAppTy. In the example above, trying to
-form the right-hand type will instead yield (T a b (c |> co |> sym co) |> <Type>).
-Both the casts there are reflexive and will be dropped. Huzzah.
+Let's now look at AppTy. Suppose a :: Type -> Type, b :: Type, and co :: Type ~ k.
+Consider
+1.  a b     =?    ((a |> <Type> -> co) b) |> sym co
+2.  a b     =?    (a |> co -> <Type>) (b |> co)
+In case (1) the left-hand type will respond to splitAppTy, while the right-hand
+type will not. In case (2), both respond to splitAppTy, but the left-hand type
+will respond to a further getTyVar, while the right-hand type will not.
+Note that, in both comparisons, the two types have the same kind.
 
-This idea of pulling coercions to the right works for splitAppTy as well.
+We have two ways of resolving this. We could forbid these types somehow.
+(Previously, we did exactly that, by disallowing casts to the left of
+an AppTy, pulling them to the right.) Or, we could declare that the two
+types are not eqType. We choose the latter. That is, for two AppTys to
+be eqType, then the components must be piecewise the same kind.
 
-However, there is one hiccup: it's possible that a coercion doesn't relate two
-Pi-types. For example, if we have @type family Fun a b where Fun a b = a -> b@,
-then we might have (T :: Fun Type Type) and (T |> axFun) Int. That axFun can't
-be pulled to the right. But we don't need to pull it: (T |> axFun) Int is not
-`eqType` to any proper TyConApp -- thus, leaving it where it is doesn't violate
-our (EQ) property.
+In (1), when computing eqType, we'll ignore the cast on the right, then
+decompose. But we'll discover that a's kind and (a |> <Type> -> co)'s kind
+differ. Thus, the two types are unequal. In (2), we'll decompose and
+discover the different kinds, similarly.
 
 Lastly, in order to detect reflexive casts reliably, we must make sure not
 to have nested casts: we update (t |> co1 |> co2) to (t |> (co1 `TransCo` co2)).
 
 In sum, in order to uphold (EQ), we need the following three invariants:
 
-  (EQ1) No decomposable CastTy to the left of an AppTy, where a decomposable
-        cast is one that relates either a FunTy to a FunTy or a
-        ForAllTy to a ForAllTy.
-  (EQ2) No reflexive casts in CastTy.
-  (EQ3) No nested CastTys.
-  (EQ4) No CastTy over (ForAllTy (Bndr tyvar vis) body).
+  (EQ1) No reflexive casts in CastTy.
+  (EQ2) No nested CastTys.
+  (EQ3) No CastTy over (ForAllTy (Bndr tyvar vis) body).
         See Note [Weird typing rule for ForAllTy] in Type.
 
 These invariants are all documented above, in the declaration for Type.
+
+Note [Equality on AppTys]
+~~~~~~~~~~~~~~~~~~~~~~~~~
+When checking when two AppTys are equal, we must also check that the
+components' kinds are respectively equal. Why? See the section on
+AppTy in Note [Respecting definitional equality].
 
 Note [Unused coercion variable in ForAllTy]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

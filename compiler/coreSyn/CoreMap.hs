@@ -466,32 +466,16 @@ xtC (D env co) f (CoercionMapX m)
 type TypeMapG = GenMap TypeMapX
 
 -- | @TypeMapX a@ is the base map from @DeBruijn Type@ to @a@, but without the
--- 'GenMap' optimization.
+-- 'GenMap' optimization. See Note [Computing equality on types] in Type.
 data TypeMapX a
-  = TM { tm_var    :: VarMap a
-       , tm_app    :: TypeMapG (TypeMapG a)
-       , tm_tycon  :: DNameEnv a
-       , tm_forall :: TypeMapG (BndrMap a) -- See Note [Binders]
-       , tm_tylit  :: TyLitMap a
-       , tm_coerce :: Maybe a
+  = TM { tm_var       :: VarMap a
+       , tm_app       :: TypeMap (TypeMap a)  -- NB: TypeMap looks up kinds; that's what we want
+       , tm_tyconapp  :: DNameEnv (ListMap TypeMapG a)
+       , tm_fun       :: TypeMapG (TypeMapG a)
+       , tm_forall    :: TypeMapG (BndrMap a) -- See Note [Binders]
+       , tm_tylit     :: TyLitMap a
+       , tm_coerce    :: Maybe a
        }
-    -- Note that there is no tyconapp case; see Note [Equality on AppTys] in Type
-
--- | Squeeze out any synonyms, and change TyConApps to nested AppTys. Why the
--- last one? See Note [Equality on AppTys] in Type
---
--- Note, however, that we keep Constraint and Type apart here, despite the fact
--- that they are both synonyms of TYPE 'LiftedRep (see #11715).
-trieMapView :: Type -> Maybe Type
-trieMapView ty
-  -- First check for TyConApps that need to be expanded to
-  -- AppTy chains.
-  | Just (tc, tys@(_:_)) <- tcSplitTyConApp_maybe ty
-  = Just $ foldl' AppTy (TyConApp tc []) tys
-
-  -- Then resolve any remaining nullary synonyms.
-  | Just ty' <- tcView ty = Just ty'
-trieMapView _ = Nothing
 
 instance TrieMap TypeMapX where
    type Key TypeMapX = DeBruijn Type
@@ -515,10 +499,8 @@ instance Eq (DeBruijn Type) where
                 (Just bv, Just bv') -> bv == bv'
                 (Nothing, Nothing)  -> v == v'
                 _ -> False
-                -- See Note [Equality on AppTys] in Type
-        (AppTy t1 t2, s) | Just (t1', t2') <- repSplitAppTy_maybe s
-            -> D env t1 == D env' t1' && D env t2 == D env' t2'
-        (s, AppTy t1' t2') | Just (t1, t2) <- repSplitAppTy_maybe s
+
+        (AppTy t1 t2, AppTy t1' t2')
             -> D env t1 == D env' t1' && D env t2 == D env' t2'
         (FunTy _ t1 t2, FunTy _ t1' t2')
             -> D env t1 == D env' t1' && D env t2 == D env' t2'
@@ -540,18 +522,20 @@ instance {-# OVERLAPPING #-}
 emptyT :: TypeMapX a
 emptyT = TM { tm_var  = emptyTM
             , tm_app  = emptyTM
-            , tm_tycon  = emptyDNameEnv
+            , tm_tyconapp = emptyTM
+            , tm_fun    = emptyTM
             , tm_forall = emptyTM
             , tm_tylit  = emptyTyLitMap
             , tm_coerce = Nothing }
 
 mapT :: (a->b) -> TypeMapX a -> TypeMapX b
-mapT f (TM { tm_var  = tvar, tm_app = tapp, tm_tycon = ttycon
-           , tm_forall = tforall, tm_tylit = tlit
+mapT f (TM { tm_var  = tvar, tm_app = tapp, tm_tyconapp = ttyconapp
+           , tm_fun = tfun, tm_forall = tforall, tm_tylit = tlit
            , tm_coerce = tcoerce })
   = TM { tm_var    = mapTM f tvar
        , tm_app    = mapTM (mapTM f) tapp
-       , tm_tycon  = mapTM f ttycon
+       , tm_tyconapp  = mapTM (mapTM f) ttyconapp
+       , tm_fun    = mapTM (mapTM f) tfun
        , tm_forall = mapTM (mapTM f) tforall
        , tm_tylit  = mapTM f tlit
        , tm_coerce = fmap f tcoerce }
@@ -560,40 +544,42 @@ mapT f (TM { tm_var  = tvar, tm_app = tapp, tm_tycon = ttycon
 lkT :: DeBruijn Type -> TypeMapX a -> Maybe a
 lkT (D env ty) m = go ty m
   where
-    go ty | Just ty' <- trieMapView ty = go ty'
+    go ty | Just ty' <- tcView ty  = go ty'
     go (TyVarTy v)                 = tm_var    >.> lkVar env v
-    go (AppTy t1 t2)               = tm_app    >.> lkG (D env t1)
-                                               >=> lkG (D env t2)
-    go (TyConApp tc [])            = tm_tycon  >.> lkDNamed tc
-    go ty@(TyConApp _ (_:_))       = pprPanic "lkT TyConApp" (ppr ty)
+    go (AppTy t1 t2)               = tm_app    >.> lkTT (D env t1)
+                                               >=> lkTT (D env t2)
+    go (TyConApp tc args)          = tm_tyconapp >.> lkDNamed tc
+                                                 >=> lkList (lkG . D env) args
+    go (FunTy _ arg res)           = tm_fun >.> lkG (D env arg) >=> lkG (D env res)
     go (LitTy l)                   = tm_tylit  >.> lkTyLit l
     go (ForAllTy (Bndr tv _) ty)   = tm_forall >.> lkG (D (extendCME env tv) ty)
                                                >=> lkBndr env tv
-    go ty@(FunTy {})               = pprPanic "lkT FunTy" (ppr ty)
     go (CastTy t _)                = go t
     go (CoercionTy {})             = tm_coerce
 
 -----------------
 xtT :: DeBruijn Type -> XT a -> TypeMapX a -> TypeMapX a
-xtT (D env ty) f m | Just ty' <- trieMapView ty = xtT (D env ty') f m
+xtT (D env ty) f m | Just ty' <- tcView ty = xtT (D env ty') f m
 
-xtT (D env (TyVarTy v))       f m = m { tm_var    = tm_var m |> xtVar env v f }
-xtT (D env (AppTy t1 t2))     f m = m { tm_app    = tm_app m |> xtG (D env t1)
-                                                            |>> xtG (D env t2) f }
-xtT (D _   (TyConApp tc []))  f m = m { tm_tycon  = tm_tycon m |> xtDNamed tc f }
-xtT (D _   (LitTy l))         f m = m { tm_tylit  = tm_tylit m |> xtTyLit l f }
-xtT (D env (CastTy t _))      f m = xtT (D env t) f m
-xtT (D _   (CoercionTy {}))   f m = m { tm_coerce = tm_coerce m |> f }
+xtT (D env (TyVarTy v))        f m = m { tm_var      = tm_var m |> xtVar env v f }
+xtT (D env (AppTy t1 t2))      f m = m { tm_app      = tm_app m |> xtTT (D env t1)
+                                                               |>> xtTT (D env t2) f }
+xtT (D env (TyConApp tc args)) f m = m { tm_tyconapp = tm_tyconapp m |> xtDNamed tc
+                                                                    |>> xtList (xtG . D env) args f }
+xtT (D env (FunTy _ arg res))  f m = m { tm_fun      = tm_fun m |> xtG (D env arg)
+                                                               |>> xtG (D env res) f }
+xtT (D _   (LitTy l))          f m = m { tm_tylit    = tm_tylit m |> xtTyLit l f }
+xtT (D env (CastTy t _))       f m = xtT (D env t) f m
+xtT (D _   (CoercionTy {}))    f m = m { tm_coerce   = tm_coerce m |> f }
 xtT (D env (ForAllTy (Bndr tv _) ty))  f m
   = m { tm_forall = tm_forall m |> xtG (D (extendCME env tv) ty)
                                 |>> xtBndr env tv f }
-xtT (D _   ty@(TyConApp _ (_:_))) _ _ = pprPanic "xtT TyConApp" (ppr ty)
-xtT (D _   ty@(FunTy {}))         _ _ = pprPanic "xtT FunTy" (ppr ty)
 
 fdT :: (a -> b -> b) -> TypeMapX a -> b -> b
 fdT k m = foldTM k (tm_var m)
         . foldTM (foldTM k) (tm_app m)
-        . foldTM k (tm_tycon m)
+        . foldTM (foldTM k) (tm_tyconapp m)
+        . foldTM (foldTM k) (tm_fun m)
         . foldTM (foldTM k) (tm_forall m)
         . foldTyLit k (tm_tylit m)
         . foldMaybe k (tm_coerce m)
