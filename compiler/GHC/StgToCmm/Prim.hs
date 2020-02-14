@@ -132,6 +132,7 @@ cgOpApp (StgPrimCallOp primcall) args _res_ty
 -- user passed a value larger than 2^(wORD_SIZE_IN_BITS-1) as the Int#
 -- literal.
 asUnsigned :: Width -> Integer -> Integer
+
 asUnsigned w n = n .&. (bit (widthInBits w) - 1)
 
 ------------------------------------------------------------------------
@@ -342,7 +343,6 @@ emitPrimOp dflags = \case
 --      r = ((StgArrBytes *)(a))->bytes
   GetSizeofMutableByteArrayOp -> \[arg] -> opAllDone $ \[res] -> do
     emitAssign (CmmLocal res) (cmmLoadIndexW platform arg (fixedHdrSizeW dflags) (bWord platform))
-
 
 --  #define touchzh(o)                  /* nothing */
   TouchOp -> \args@[_] -> opAllDone $ \res@[] -> do

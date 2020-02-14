@@ -3394,6 +3394,10 @@ pseudoop "proxy#"
    { Witness for an unboxed {\tt Proxy#} value, which has no runtime
    representation. }
 
+pseudoop "with#"
+   o -> (State# RealWorld -> (# State# RealWorld, p #)) -> State# RealWorld -> (# State# RealWorld, p #)
+   { TODO. }
+
 pseudoop   "seq"
    a -> b -> b
    { The value of {\tt seq a b} is bottom if {\tt a} is bottom, and
