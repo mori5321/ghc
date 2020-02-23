@@ -143,4 +143,5 @@ data Extension
    | ImportQualifiedPost
    | CUSKs
    | StandaloneKindSignatures
+   | LexicalNegation
    deriving (Eq, Enum, Show, Generic, Bounded)
