@@ -509,16 +509,16 @@ nlHsTyConApp :: LexicalFixity -> IdP (GhcPass p)
 nlHsTyConApp fixity tycon tys
   | Infix <- fixity
   , HsValArg ty1 : HsValArg ty2 : rest <- tys
-  = foldl' mk_app (noLoc $ HsOpTy noExtField ty1 (noLoc tycon) ty2) rest
+  = foldl' mk_app (noLoc $ HsOpTy noAnn ty1 (noLocA tycon) ty2) rest
   | otherwise
   = foldl' mk_app (nlHsTyVar tycon) tys
   where
     mk_app :: LHsType (GhcPass p) -> LHsTypeArg (GhcPass p) -> LHsType (GhcPass p)
-    mk_app fun@(L _ (HsOpTy {})) arg = mk_app (noLoc $ HsParTy noExtField fun) arg
+    mk_app fun@(L _ (HsOpTy {})) arg = mk_app (noLoc $ HsParTy noAnn fun) arg
       -- parenthesize things like `(A + B) C`
     mk_app fun (HsValArg ty) = noLoc (HsAppTy noExtField fun (parenthesizeHsType appPrec ty))
     mk_app fun (HsTypeArg _ ki) = noLoc (HsAppKindTy noSrcSpan fun (parenthesizeHsType appPrec ki))
-    mk_app fun (HsArgPar _) = noLoc (HsParTy noExtField fun)
+    mk_app fun (HsArgPar _) = noLoc (HsParTy noAnn fun)
 
 nlHsAppKindTy ::
   LHsType (GhcPass p) -> LHsKind (GhcPass p) -> LHsType (GhcPass p)
