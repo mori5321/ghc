@@ -207,7 +207,7 @@ tcRnModuleTcRnM :: HscEnv
 tcRnModuleTcRnM hsc_env mod_sum
                 (HsParsedModule {
                    hpm_module =
-                      (L loc (HsModule maybe_mod export_ies
+                      (L loc (HsModule _anns maybe_mod export_ies
                                        import_decls local_decls mod_deprec
                                        maybe_doc_hdr)),
                    hpm_src_files = src_files
@@ -244,9 +244,9 @@ tcRnModuleTcRnM hsc_env mod_sum
                              $ implicitRequirements hsc_env
                                 (map simplifyImport (prel_imports
                                                      ++ import_decls))
-        ; let { mkImport (Nothing, L _ mod_name) = noLoc
+        ; let { mkImport (Nothing, L _ mod_name) = noLocA
                 $ (simpleImportDecl mod_name)
-                  { ideclHiding = Just (False, noLoc [])}
+                  { ideclHiding = Just (False, noLocA [])}
               ; mkImport _ = panic "mkImport" }
         ; let { all_imports = prel_imports ++ import_decls
                        ++ map mkImport (raw_sig_imports ++ raw_req_imports) }
@@ -396,7 +396,7 @@ tcRnImports hsc_env import_decls
 
 tcRnSrcDecls :: Bool  -- False => no 'module M(..) where' header at all
              -> [LHsDecl GhcPs]               -- Declarations
-             -> Maybe (Located [LIE GhcPs])
+             -> Maybe (LocatedA [LIE GhcPs])
              -> TcM TcGblEnv
 tcRnSrcDecls explicit_mod_hdr decls export_ies
  = do { -- Do all the declarations
@@ -1716,7 +1716,7 @@ tcTyClsInstDecls tycl_decls deriv_decls binds
 -}
 
 checkMain :: Bool  -- False => no 'module M(..) where' header at all
-          -> Maybe (Located [LIE GhcPs])  -- Export specs of Main module
+          -> Maybe (LocatedA [LIE GhcPs])  -- Export specs of Main module
           -> TcM TcGblEnv
 -- If we are in module Main, check that 'main' is defined and exported.
 checkMain explicit_mod_hdr export_ies
@@ -1724,7 +1724,7 @@ checkMain explicit_mod_hdr export_ies
         ; tcg_env <- getGblEnv
         ; check_main dflags tcg_env explicit_mod_hdr export_ies }
 
-check_main :: DynFlags -> TcGblEnv -> Bool -> Maybe (Located [LIE GhcPs])
+check_main :: DynFlags -> TcGblEnv -> Bool -> Maybe (LocatedA [LIE GhcPs])
            -> TcM TcGblEnv
 check_main dflags tcg_env explicit_mod_hdr export_ies
  | mod /= main_mod
@@ -1834,7 +1834,7 @@ check_main dflags tcg_env explicit_mod_hdr export_ies
 
     -- Select the main functions from the export list.
     -- Only the module name is needed, the function name is fixed.
-    selExportMains :: Maybe (Located [LIE GhcPs]) -> [ModuleName]    -- #16453
+    selExportMains :: Maybe (LocatedA [LIE GhcPs]) -> [ModuleName]    -- #16453
     selExportMains Nothing = [main_mod_nm]
         -- no main specified, but there is a header.
     selExportMains (Just exps) = fmap fst $

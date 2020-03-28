@@ -124,6 +124,9 @@ setL loc = CvtM (\_ _ -> Right (loc, ()))
 returnL :: a -> CvtM (Located a)
 returnL x = CvtM (\_ loc -> Right (loc, L loc x))
 
+returnLA :: a -> CvtM (LocatedA a)
+returnLA x = CvtM (\_ loc -> Right (loc, L (noAnnSrcSpan loc) x))
+
 returnJustL :: a -> CvtM (Maybe (Located a))
 returnJustL = fmap Just . returnL
 
@@ -293,7 +296,8 @@ cvtDec (InstanceD o ctxt ty decs)
                       , cid_binds = binds'
                       , cid_sigs = Hs.mkClassOpSigs sigs'
                       , cid_tyfam_insts = ats', cid_datafam_insts = adts'
-                      , cid_overlap_mode = fmap (L loc . overlap) o } }
+                      , cid_overlap_mode
+                                   = fmap (L (noAnnSrcSpan loc) . overlap) o } }
   where
   overlap pragma =
     case pragma of
@@ -329,7 +333,7 @@ cvtDec (DataInstD ctxt bndrs tys ksig constrs derivs)
        ; returnJustL $ InstD noExtField $ DataFamInstD
            { dfid_ext = noAnn
            , dfid_inst = DataFamInstDecl { dfid_eqn = mkHsImplicitBndrs $
-                           FamEqn { feqn_ext = noExtField
+                           FamEqn { feqn_ext = noAnn
                                   , feqn_tycon = tc'
                                   , feqn_bndrs = bndrs'
                                   , feqn_pats = typats'
@@ -349,7 +353,7 @@ cvtDec (NewtypeInstD ctxt bndrs tys ksig constr derivs)
        ; returnJustL $ InstD noExtField $ DataFamInstD
            { dfid_ext = noAnn
            , dfid_inst = DataFamInstDecl { dfid_eqn = mkHsImplicitBndrs $
-                           FamEqn { feqn_ext = noExtField
+                           FamEqn { feqn_ext = noAnn
                                   , feqn_tycon = tc'
                                   , feqn_bndrs = bndrs'
                                   , feqn_pats = typats'
@@ -440,8 +444,8 @@ cvtTySynEqn (TySynEqn mb_bndrs lhs rhs)
            ConT nm -> do { nm' <- tconNameL nm
                          ; rhs' <- cvtType rhs
                          ; let args' = map wrap_tyarg args
-                         ; returnL $ mkHsImplicitBndrs
-                            $ FamEqn { feqn_ext    = noExtField
+                         ; returnLA $ mkHsImplicitBndrs
+                            $ FamEqn { feqn_ext    = noAnn
                                      , feqn_tycon  = nm'
                                      , feqn_bndrs  = mb_bndrs'
                                      , feqn_pats   = args'
@@ -450,8 +454,8 @@ cvtTySynEqn (TySynEqn mb_bndrs lhs rhs)
            InfixT t1 nm t2 -> do { nm' <- tconNameL nm
                                  ; args' <- mapM cvtType [t1,t2]
                                  ; rhs' <- cvtType rhs
-                                 ; returnL $ mkHsImplicitBndrs
-                                      $ FamEqn { feqn_ext    = noExtField
+                                 ; returnLA $ mkHsImplicitBndrs
+                                      $ FamEqn { feqn_ext    = noAnn
                                                , feqn_tycon  = nm'
                                                , feqn_bndrs  = mb_bndrs'
                                                , feqn_pats   =
@@ -697,7 +701,7 @@ cvtForD (ImportF callconv safety from nm ty)
     mk_imp impspec
       = do { nm' <- vNameL nm
            ; ty' <- cvtType ty
-           ; return (ForeignImport { fd_i_ext = noExtField
+           ; return (ForeignImport { fd_i_ext = noAnn
                                    , fd_name = nm'
                                    , fd_sig_ty = mkLHsSigType ty'
                                    , fd_fi = impspec })
@@ -714,7 +718,7 @@ cvtForD (ExportF callconv as nm ty)
                                                 (mkFastString as)
                                                 (cvt_conv callconv)))
                                                 (noLoc (SourceText as))
-        ; return $ ForeignExport { fd_e_ext = noExtField
+        ; return $ ForeignExport { fd_e_ext = noAnn
                                  , fd_name = nm'
                                  , fd_sig_ty = mkLHsSigType ty'
                                  , fd_fe = e } }
@@ -777,8 +781,8 @@ cvtPragmaD (RuleP nm ty_bndrs tm_bndrs lhs rhs phases)
        ; returnJustL $ Hs.RuleD noExtField
             $ HsRules { rds_ext = noAnn
                       , rds_src = SourceText "{-# RULES"
-                      , rds_rules = [noLoc $
-                          HsRule { rd_ext  = noExtField
+                      , rds_rules = [noLocA $
+                          HsRule { rd_ext  = noAnn
                                  , rd_name = (noLoc (quotedSourceText nm,nm'))
                                  , rd_act  = act
                                  , rd_tyvs = ty_bndrs'
@@ -1688,7 +1692,7 @@ cvtInjectivityAnnotation :: TH.InjectivityAnn
 cvtInjectivityAnnotation (TH.InjectivityAnn annLHS annRHS)
   = do { annLHS' <- tNameL annLHS
        ; annRHS' <- mapM tNameL annRHS
-       ; returnL (Hs.InjectivityAnn annLHS' annRHS') }
+       ; returnL (Hs.InjectivityAnn noAnn annLHS' annRHS') }
 
 cvtPatSynSigTy :: TH.Type -> CvtM (LHsType GhcPs)
 -- pattern synonym types are of peculiar shapes, which is why we treat

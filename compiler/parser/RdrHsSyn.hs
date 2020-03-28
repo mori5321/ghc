@@ -169,7 +169,7 @@ mkClassDecl :: SrcSpan
             -> Located (Maybe (LHsContext GhcPs), LHsType GhcPs)
             -> Located (a,[LHsFunDep GhcPs])
             -> OrdList (LHsDecl GhcPs)
-            -> ApiAnn
+            -> [AddApiAnn]
             -> P (LTyClDecl GhcPs)
 
 mkClassDecl loc (L _ (mcxt, tycl_hdr)) fds where_cls annsIn
@@ -179,7 +179,7 @@ mkClassDecl loc (L _ (mcxt, tycl_hdr)) fds where_cls annsIn
        ; cs1 <- addAnnsAt loc ann -- Add any API Annotations to the top SrcSpan
        ; (tyvars,annst) <- checkTyVars (text "class") whereDots cls tparams
        ; cs2 <- addAnnsAt loc annst -- Add any API Annotations to the top SrcSpan
-       ; let anns' = addAnns annsIn (ann++annst) (cs1 ++ cs2)
+       ; let anns' = addAnns (ApiAnn annsIn []) (ann++annst) (cs1 ++ cs2)
        ; return (L loc (ClassDecl { tcdCExt = anns', tcdCtxt = cxt
                                   , tcdLName = cls, tcdTyVars = tyvars
                                   , tcdFixity = fixity
@@ -196,7 +196,7 @@ mkTyData :: SrcSpan
          -> Maybe (LHsKind GhcPs)
          -> [LConDecl GhcPs]
          -> HsDeriving GhcPs
-         -> ApiAnn
+         -> [AddApiAnn]
          -> P (LTyClDecl GhcPs)
 mkTyData loc new_or_data cType (L _ (mcxt, tycl_hdr))
          ksig data_cons maybe_deriv annsIn
@@ -204,7 +204,7 @@ mkTyData loc new_or_data cType (L _ (mcxt, tycl_hdr))
        ; cs1 <- addAnnsAt loc ann -- Add any API Annotations to the top SrcSpan [temp]
        ; (tyvars, anns) <- checkTyVars (ppr new_or_data) equalsDots tc tparams
        ; cs2 <- addAnnsAt loc anns -- Add any API Annotations to the top SrcSpan [temp]
-       ; let anns' = addAnns annsIn (ann ++ anns) (cs1 ++ cs2)
+       ; let anns' = addAnns (ApiAnn annsIn []) (ann ++ anns) (cs1 ++ cs2)
        ; defn <- mkDataDefn new_or_data cType mcxt ksig data_cons maybe_deriv
        ; return (L loc (DataDecl { tcdDExt = anns',
                                    tcdLName = tc, tcdTyVars = tyvars,
@@ -232,14 +232,14 @@ mkDataDefn new_or_data cType mcxt ksig data_cons maybe_deriv
 mkTySynonym :: SrcSpan
             -> LHsType GhcPs  -- LHS
             -> LHsType GhcPs  -- RHS
-            -> ApiAnn
+            -> [AddApiAnn]
             -> P (LTyClDecl GhcPs)
 mkTySynonym loc lhs rhs annsIn
   = do { (tc, tparams, fixity, ann) <- checkTyClHdr False lhs
        ; cs1 <- addAnnsAt loc ann -- Add any API Annotations to the top SrcSpan [temp]
        ; (tyvars, anns) <- checkTyVars (text "type") equalsDots tc tparams
        ; cs2 <- addAnnsAt loc anns -- Add any API Annotations to the top SrcSpan [temp]
-       ; let anns' = addAnns annsIn (ann ++ anns) (cs1 ++ cs2)
+       ; let anns' = addAnns (ApiAnn annsIn []) (ann ++ anns) (cs1 ++ cs2)
        ; return (L loc (SynDecl { tcdSExt = anns'
                                 , tcdLName = tc, tcdTyVars = tyvars
                                 , tcdFixity = fixity
@@ -249,12 +249,13 @@ mkStandaloneKindSig
   :: SrcSpan
   -> Located [LocatedA RdrName] -- LHS
   -> LHsKind GhcPs             -- RHS
-  -> ApiAnn
+  -> [AddApiAnn]
   -> P (LStandaloneKindSig GhcPs)
 mkStandaloneKindSig loc lhs rhs anns =
   do { vs <- mapM check_lhs_name (unLoc lhs)
      ; v <- check_singular_lhs (reverse vs)
-     ; return $ L loc $ StandaloneKindSig anns v (mkLHsSigType rhs) }
+     ; cs <- addAnnsAt loc []
+     ; return $ L loc $ StandaloneKindSig (ApiAnn anns cs) v (mkLHsSigType rhs) }
   where
     check_lhs_name :: LocatedA RdrName -> P (LocatedA RdrName) -- AZ temp
     check_lhs_name v@(unLoc->name) =
@@ -272,20 +273,22 @@ mkStandaloneKindSig loc lhs rhs anns =
                        2 (pprWithCommas ppr vs)
                   , text "See https://gitlab.haskell.org/ghc/ghc/issues/16754 for details." ]
 
-mkTyFamInstEqn :: Maybe [LHsTyVarBndr GhcPs]
+mkTyFamInstEqn :: SrcSpan
+               -> Maybe [LHsTyVarBndr GhcPs]
                -> LHsType GhcPs
                -> LHsType GhcPs
-               -> P (TyFamInstEqn GhcPs,[AddApiAnn])
-mkTyFamInstEqn bndrs lhs rhs
+               -> [AddApiAnn]
+               -> P (LTyFamInstEqn GhcPs)
+mkTyFamInstEqn loc bndrs lhs rhs anns
   = do { (tc, tparams, fixity, ann) <- checkTyClHdr False lhs
-       ; return (mkHsImplicitBndrs
-                  (FamEqn { feqn_ext    = noExtField
+       ; cs <- addAnnsAt loc []
+       ; return (L (noAnnSrcSpan loc) $ mkHsImplicitBndrs
+                  (FamEqn { feqn_ext    = ApiAnn anns cs
                           , feqn_tycon  = tc
                           , feqn_bndrs  = bndrs
                           , feqn_pats   = tparams
                           , feqn_fixity = fixity
-                          , feqn_rhs    = rhs }),
-                 ann) }
+                          , feqn_rhs    = rhs })) }
 
 mkDataFamInst :: SrcSpan
               -> NewOrData
@@ -295,16 +298,17 @@ mkDataFamInst :: SrcSpan
               -> Maybe (LHsKind GhcPs)
               -> [LConDecl GhcPs]
               -> HsDeriving GhcPs
-              -> ApiAnn
+              -> [AddApiAnn]
               -> P (LInstDecl GhcPs)
 mkDataFamInst loc new_or_data cType (mcxt, bndrs, tycl_hdr)
               ksig data_cons maybe_deriv anns
   = do { (tc, tparams, fixity, ann) <- checkTyClHdr False tycl_hdr
        ; -- AZ:TODO: deal with these comments
-       ; _cs <- addAnnsAt loc ann -- Add any API Annotations to the top SrcSpan [temp]
+       ; cs <- addAnnsAt loc ann -- Add any API Annotations to the top SrcSpan [temp]
+       ; let anns' = addAnns (ApiAnn ann cs) anns []
        ; defn <- mkDataDefn new_or_data cType mcxt ksig data_cons maybe_deriv
-       ; return (L loc (DataFamInstD anns (DataFamInstDecl (mkHsImplicitBndrs
-                  (FamEqn { feqn_ext    = noExtField
+       ; return (L loc (DataFamInstD anns' (DataFamInstDecl (mkHsImplicitBndrs
+                  (FamEqn { feqn_ext    = noAnn -- AZ: get anns
                           , feqn_tycon  = tc
                           , feqn_bndrs  = bndrs
                           , feqn_pats   = tparams
@@ -313,24 +317,25 @@ mkDataFamInst loc new_or_data cType (mcxt, bndrs, tycl_hdr)
 
 mkTyFamInst :: SrcSpan
             -> TyFamInstEqn GhcPs
-            -> ApiAnn
+            -> [AddApiAnn]
             -> P (LInstDecl GhcPs)
-mkTyFamInst loc eqn anns
-  = return (L loc (TyFamInstD anns (TyFamInstDecl eqn)))
+mkTyFamInst loc eqn anns = do
+  cs <- addAnnsAt loc []
+  return (L loc (TyFamInstD (ApiAnn anns cs) (TyFamInstDecl eqn)))
 
 mkFamDecl :: SrcSpan
           -> FamilyInfo GhcPs
           -> LHsType GhcPs                   -- LHS
           -> Located (FamilyResultSig GhcPs) -- Optional result signature
           -> Maybe (LInjectivityAnn GhcPs)   -- Injectivity annotation
-          -> ApiAnn
+          -> [AddApiAnn]
           -> P (LTyClDecl GhcPs)
 mkFamDecl loc info lhs ksig injAnn annsIn
   = do { (tc, tparams, fixity, ann) <- checkTyClHdr False lhs
        ; cs1 <- addAnnsAt loc ann -- Add any API Annotations to the top SrcSpan [temp]
        ; (tyvars, anns) <- checkTyVars (ppr info) equals_or_where tc tparams
        ; cs2 <- addAnnsAt loc anns -- Add any API Annotations to the top SrcSpan [temp]
-       ; let anns' = addAnns annsIn (ann++anns) (cs1 ++ cs2)
+       ; let anns' = addAnns (ApiAnn annsIn []) (ann++anns) (cs1 ++ cs2)
        ; return (L loc (FamDecl anns' (FamilyDecl
                                            { fdExt       = noExtField
                                            , fdInfo      = info, fdLName = tc
@@ -2699,7 +2704,7 @@ mkInlinePragma src (inl, match_info) mb_act
 mkImport :: Located CCallConv
          -> Located Safety
          -> (Located StringLiteral, LocatedA RdrName, LHsSigType GhcPs)
-         -> P (HsDecl GhcPs)
+         -> P (ApiAnn -> HsDecl GhcPs)
 mkImport cconv safety (L loc (StringLiteral esrc entity), v, ty) =
     case unLoc cconv of
       CCallConv          -> mkCImport
@@ -2728,8 +2733,8 @@ mkImport cconv safety (L loc (StringLiteral esrc entity), v, ty) =
         funcTarget = CFunction (StaticTarget esrc entity' Nothing True)
         importSpec = CImport cconv safety Nothing funcTarget (L loc esrc)
 
-    returnSpec spec = return $ ForD noExtField $ ForeignImport
-          { fd_i_ext  = noExtField
+    returnSpec spec = return $ \ann -> ForD noExtField $ ForeignImport
+          { fd_i_ext  = ann
           , fd_name   = v
           , fd_sig_ty = ty
           , fd_fi     = spec
@@ -2800,10 +2805,10 @@ parseCImport cconv safety nm str sourceText =
 --
 mkExport :: Located CCallConv
          -> (Located StringLiteral, LocatedA RdrName, LHsSigType GhcPs)
-         -> P (HsDecl GhcPs)
+         -> P (ApiAnn -> HsDecl GhcPs)
 mkExport (L lc cconv) (L le (StringLiteral esrc entity), v, ty)
- = return $ ForD noExtField $
-   ForeignExport { fd_e_ext = noExtField, fd_name = v, fd_sig_ty = ty
+ = return $ \ann -> ForD noExtField $
+   ForeignExport { fd_e_ext = ann, fd_name = v, fd_sig_ty = ty
                  , fd_fe = CExport (L lc (CExportStatic esrc entity' cconv))
                                    (L le esrc) }
   where
@@ -2888,11 +2893,11 @@ mkTypeImpExp name =
        text "Illegal keyword 'type' (use ExplicitNamespaces to enable)"
      return (fmap (`setRdrNameSpace` tcClsName) name)
 
-checkImportSpec :: Located [LIE GhcPs] -> P (Located [LIE GhcPs])
+checkImportSpec :: LocatedA [LIE GhcPs] -> P (LocatedA [LIE GhcPs])
 checkImportSpec ie@(L _ specs) =
     case [l | (L l (IEThingWith _ _ (IEWildcard _) _ _)) <- specs] of
       [] -> return ie
-      (l:_) -> importSpecError l
+      (l:_) -> importSpecError (locA l)
   where
     importSpecError l =
       addFatalError l
@@ -2982,7 +2987,7 @@ data PV_Context =
 data PV_Accum =
   PV_Accum
     { pv_messages :: DynFlags -> Messages
-    , pv_annotations :: [(ApiAnnKey,[RealSrcSpan])]
+    -- AZ , pv_annotations :: [(ApiAnnKey,[RealSrcSpan])]
     , pv_comment_q :: [RealLocated AnnotationComment]
     , pv_annotations_comments :: [(RealSrcSpan,[RealLocated AnnotationComment])]
     }
@@ -3017,12 +3022,12 @@ runPV_msg msg m =
         , pv_hint = msg }
       pv_acc = PV_Accum
         { pv_messages = messages s
-        , pv_annotations = annotations s
+        -- , pv_annotations = annotations s
         , pv_comment_q = comment_q s
         , pv_annotations_comments = annotations_comments s }
       mkPState acc' =
         s { messages = pv_messages acc'
-          , annotations = pv_annotations acc'
+          -- AZ , annotations = pv_annotations acc'
           , comment_q = pv_comment_q acc'
           , annotations_comments = pv_annotations_comments acc' }
     in
@@ -3054,10 +3059,12 @@ instance MonadP PV where
       let
         (comment_q', new_ann_comments) = allocateComments l (pv_comment_q acc)
         annotations_comments' = new_ann_comments ++ pv_annotations_comments acc
-        annotations' = ((l,a), [v]) : pv_annotations acc
+        -- annotations' = ((l,a), [v]) : pv_annotations acc
         acc' = acc
-          { pv_annotations = annotations'
-          , pv_comment_q = comment_q'
+          {
+          -- AZ  pv_annotations = annotations'
+          -- ,
+            pv_comment_q = comment_q'
           , pv_annotations_comments = annotations_comments' }
       in
         PV_Ok acc' ()

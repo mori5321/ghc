@@ -105,7 +105,7 @@ tcRules decls = mapM (wrapLocM tcRuleDecls) decls
 tcRuleDecls :: RuleDecls GhcRn -> TcM (RuleDecls GhcTcId)
 tcRuleDecls (HsRules { rds_src = src
                      , rds_rules = decls })
-   = do { tc_decls <- mapM (wrapLocM tcRule) decls
+   = do { tc_decls <- mapM (wrapLocMA tcRule) decls
         ; return $ HsRules { rds_ext   = noExtField
                            , rds_src   = src
                            , rds_rules = tc_decls } }

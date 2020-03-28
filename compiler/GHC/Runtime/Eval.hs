@@ -773,7 +773,7 @@ findGlobalRdrEnv hsc_env imports
            (err : _, _)    -> Left err }
   where
     idecls :: [LImportDecl GhcPs]
-    idecls = [noLoc d | IIDecl d <- imports]
+    idecls = [noLocA d | IIDecl d <- imports]
 
     imods :: [ModuleName]
     imods = [m | IIModule m <- imports]

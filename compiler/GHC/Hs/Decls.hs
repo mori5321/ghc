@@ -1135,11 +1135,17 @@ type LInjectivityAnn pass = Located (InjectivityAnn pass)
 --
 -- This will be represented as "InjectivityAnn `r` [`a`, `c`]"
 data InjectivityAnn pass
-  = InjectivityAnn (LocatedA (IdP pass)) [LocatedA (IdP pass)]
+  = InjectivityAnn (XCInjectivityAnn pass)
+                   (LocatedA (IdP pass)) [LocatedA (IdP pass)]
   -- ^ - 'ApiAnnotation.AnnKeywordId' :
   --             'ApiAnnotation.AnnRarrow', 'ApiAnnotation.AnnVbar'
 
   -- For details on above see note [Api annotations] in ApiAnnotation
+  | XInjectivityAnn !(XXInjectivityAnn pass)
+
+type instance XCInjectivityAnn  (GhcPass _) = ApiAnn
+type instance XXInjectivityAnn  (GhcPass _) = NoExtCon
+
 
 data FamilyInfo pass
   = DataFamily
@@ -1201,8 +1207,9 @@ pprFamilyDecl top_level (FamilyDecl { fdInfo = info, fdLName = ltycon
                 TyVarSig _ tv_bndr -> text "=" <+> ppr tv_bndr
                 XFamilyResultSig nec -> noExtCon nec
     pp_inj = case mb_inj of
-               Just (L _ (InjectivityAnn lhs rhs)) ->
+               Just (L _ (InjectivityAnn _ lhs rhs)) ->
                  hsep [ vbar, ppr lhs, text "->", hsep (map ppr rhs) ]
+               Just (L _ (XInjectivityAnn nec)) -> noExtCon nec
                Nothing -> empty
     (pp_where, pp_eqns) = case info of
       ClosedTypeFamily mb_eqns ->
@@ -1628,7 +1635,7 @@ free-standing `type instance` declaration.
 ----------------- Type synonym family instances -------------
 
 -- | Located Type Family Instance Equation
-type LTyFamInstEqn pass = Located (TyFamInstEqn pass)
+type LTyFamInstEqn pass = LocatedA (TyFamInstEqn pass)
   -- ^ May have 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnSemi'
   --   when in a list
 
@@ -1741,7 +1748,7 @@ data FamEqn pass rhs
 
     -- For details on above see note [Api annotations] in ApiAnnotation
 
-type instance XCFamEqn    (GhcPass _) r = NoExtField
+type instance XCFamEqn    (GhcPass _) r = ApiAnn
 type instance XXFamEqn    (GhcPass _) r = NoExtCon
 
 ----------------- Class instances -------------
@@ -1760,7 +1767,7 @@ data ClsInstDecl pass
       , cid_sigs          :: [LSig pass]         -- User-supplied pragmatic info
       , cid_tyfam_insts   :: [LTyFamInstDecl pass]   -- Type family instances
       , cid_datafam_insts :: [LDataFamInstDecl pass] -- Data family instances
-      , cid_overlap_mode  :: Maybe (Located OverlapMode)
+      , cid_overlap_mode  :: Maybe (LocatedA OverlapMode)
          -- ^ - 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnOpen',
          --                                    'ApiAnnotation.AnnClose',
 
@@ -1922,7 +1929,7 @@ ppDerivStrategy mb =
     Nothing       -> empty
     Just (L _ ds) -> ppr ds
 
-ppOverlapPragma :: Maybe (Located OverlapMode) -> SDoc
+ppOverlapPragma :: Maybe (LocatedA OverlapMode) -> SDoc
 ppOverlapPragma mb =
   case mb of
     Nothing           -> empty
@@ -1982,7 +1989,7 @@ data DerivDecl pass = DerivDecl
           -- See Note [Inferring the instance context] in TcDerivInfer.
 
         , deriv_strategy     :: Maybe (LDerivStrategy pass)
-        , deriv_overlap_mode :: Maybe (Located OverlapMode)
+        , deriv_overlap_mode :: Maybe (LocatedA OverlapMode)
          -- ^ - 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnDeriving',
          --        'ApiAnnotation.AnnInstance', 'ApiAnnotation.AnnStock',
          --        'ApiAnnotation.AnnAnyClass', 'Api.AnnNewtype',
@@ -2170,11 +2177,11 @@ data ForeignDecl pass
     such as Int and IO that we know how to make foreign calls with.
 -}
 
-type instance XForeignImport   GhcPs = NoExtField
+type instance XForeignImport   GhcPs = ApiAnn
 type instance XForeignImport   GhcRn = NoExtField
 type instance XForeignImport   GhcTc = Coercion
 
-type instance XForeignExport   GhcPs = NoExtField
+type instance XForeignExport   GhcPs = ApiAnn
 type instance XForeignExport   GhcRn = NoExtField
 type instance XForeignExport   GhcTc = Coercion
 
@@ -2292,7 +2299,7 @@ type instance XCRuleDecls    GhcTc = NoExtField
 type instance XXRuleDecls    (GhcPass _) = NoExtCon
 
 -- | Located Rule Declaration
-type LRuleDecl pass = Located (RuleDecl pass)
+type LRuleDecl pass = LocatedA (RuleDecl pass)
 
 -- | Rule Declaration
 data RuleDecl pass
@@ -2322,7 +2329,7 @@ data RuleDecl pass
 data HsRuleRn = HsRuleRn NameSet NameSet -- Free-vars from the LHS and RHS
   deriving Data
 
-type instance XHsRule       GhcPs = NoExtField
+type instance XHsRule       GhcPs = ApiAnn
 type instance XHsRule       GhcRn = HsRuleRn
 type instance XHsRule       GhcTc = HsRuleRn
 

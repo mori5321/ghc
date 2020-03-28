@@ -43,7 +43,7 @@ One per \tr{import} declaration in a module.
 -}
 
 -- | Located Import Declaration
-type LImportDecl pass = Located (ImportDecl pass)
+type LImportDecl pass = LocatedA (ImportDecl pass)
         -- ^ When in a list this may have
         --
         --  - 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnSemi'
@@ -88,7 +88,7 @@ data ImportDecl pass
       ideclQualified :: ImportDeclQualifiedStyle, -- ^ If/how the import is qualified.
       ideclImplicit  :: Bool,          -- ^ True => implicit import (of Prelude)
       ideclAs        :: Maybe (Located ModuleName),  -- ^ as Module
-      ideclHiding    :: Maybe (Bool, Located [LIE pass])
+      ideclHiding    :: Maybe (Bool, LocatedA [LIE pass])
                                        -- ^ (True => hiding, names)
     }
   | XImportDecl (XXImportDecl pass)
@@ -197,7 +197,7 @@ type LIEWrappedName name = Located (IEWrappedName name)
 
 
 -- | Located Import or Export
-type LIE pass = Located (IE pass)
+type LIE pass = LocatedA (IE pass)
         -- ^ When in a list this may have
         --
         --  - 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnComma'

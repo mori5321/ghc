@@ -2124,7 +2124,7 @@ data PState = PState {
         -- locations of 'noise' tokens in the source, so that users of
         -- the GHC API can do source to source conversions.
         -- See note [Api annotations] in ApiAnnotation.hs
-        annotations :: [(ApiAnnKey,[RealSrcSpan])],
+        -- AZ annotations :: [(ApiAnnKey,[RealSrcSpan])],
         eof_pos :: Maybe RealSrcSpan,
         comment_q :: [RealLocated AnnotationComment],
         annotations_comments :: [(RealSrcSpan,[RealLocated AnnotationComment])]
@@ -2606,7 +2606,7 @@ mkPStatePure options buf loc =
       alr_context = [],
       alr_expecting_ocurly = Nothing,
       alr_justClosedExplicitLetBlock = False,
-      annotations = [],
+      -- AZ annotations = [],
       eof_pos = Nothing,
       comment_q = [],
       annotations_comments = []
@@ -2692,7 +2692,7 @@ instance MonadP P where
   getBit ext = P $ \s -> let b =  ext `xtest` pExtsBitmap (options s)
                          in b `seq` POk s b
   addAnnotation (RealSrcSpan l _) a (RealSrcSpan v _) = do
-    addAnnotationOnly l a v
+    -- AZ addAnnotationOnly l a v
     _ <- allocateCommentsP l
     return ()
   addAnnotation _ _ _ = return ()
@@ -3236,10 +3236,12 @@ data AddApiAnn = AddApiAnn AnnKeywordId SrcSpan deriving (Data,Show,Eq)
 instance Outputable AddApiAnn where
   ppr (AddApiAnn kw ss) = text "AddApiAnn" <+> ppr kw <+> ppr ss
 
+{- AZ
 addAnnotationOnly :: RealSrcSpan -> AnnKeywordId -> RealSrcSpan -> P ()
 addAnnotationOnly l a v = P $ \s -> POk s {
   annotations = ((l,a), [v]) : annotations s
   } ()
+-}
 
 -- |Given a 'SrcSpan' that surrounds a 'HsPar' or 'HsParTy', generate
 -- 'AddApiAnn' values for the opening and closing bordering on the start

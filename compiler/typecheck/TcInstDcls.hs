@@ -572,7 +572,7 @@ tcTyFamInstDecl mb_clsinfo (L loc decl@(TyFamInstDecl { tfid_eqn = eqn }))
 
          -- (1) do the work of verifying the synonym group
        ; co_ax_branch <- tcTyFamInstEqn fam_tc mb_clsinfo
-                                        (L (locA $ getLoc fam_lname) eqn)
+                                        (L (getLoc fam_lname) eqn)
 
 
          -- (2) check for validity

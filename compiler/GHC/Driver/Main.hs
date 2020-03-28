@@ -394,7 +394,8 @@ hscParse' mod_summary
             srcs2 <- liftIO $ filterM doesFileExist srcs1
 
             let api_anns = ApiAnns {
-                      apiAnnItems = M.fromListWith (++) $ annotations pst,
+                      -- AZ apiAnnItems = M.fromListWith (++) $ annotations pst,
+                      apiAnnItems = M.empty,
                       apiAnnEofPos = eof_pos pst,
                       apiAnnComments = M.fromList (annotations_comments pst),
                       apiAnnRogueComments = comment_q pst
@@ -991,9 +992,9 @@ hscCheckSafeImports tcg_env = do
 
     warns dflags rules = listToBag $ map (warnRules dflags) rules
 
-    warnRules :: DynFlags -> GenLocated SrcSpan (RuleDecl GhcTc) -> ErrMsg
+    warnRules :: DynFlags -> LRuleDecl GhcTc -> ErrMsg
     warnRules dflags (L loc (HsRule { rd_name = n })) =
-        mkPlainWarnMsg dflags loc $
+        mkPlainWarnMsg dflags (locA loc) $
             text "Rule \"" <> ftext (snd $ unLoc n) <> text "\" ignored" $+$
             text "User defined rules are disabled under Safe Haskell"
     warnRules _ (L _ (XRuleDecl nec)) = noExtCon nec

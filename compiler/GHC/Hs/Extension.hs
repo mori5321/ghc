@@ -261,6 +261,20 @@ data SrcSpanAnn = SrcSpanAnn { ann :: ApiAnn, locA :: SrcSpan }
 instance Outputable SrcSpanAnn where
   ppr (SrcSpanAnn a l) = text "SrcSpanAnn" <+> ppr a <+> ppr l
 
+-- ---------------------------------------------------------------------
+-- Managing annotations for lists
+-- ---------------------------------------------------------------------
+
+data AnnList
+  = AnnList {
+      alOpenLoc      :: SrcSpan,
+      alOpenKeyword  :: AnnKeywordId,
+      alCloseLoc     :: SrcSpan,
+      alCloseKeyword :: AnnKeywordId
+      } deriving (Data)
+
+-- ---------------------------------------------------------------------
+
 reAnn :: [AddApiAnn] -> ApiAnnComments -> Located a -> LocatedA a
 reAnn anns cs (L l a) = L (SrcSpanAnn (ApiAnn anns cs) l) a
 
@@ -559,6 +573,11 @@ type family XXAnnDecl      x
 type family XCRoleAnnotDecl  x
 type family XXRoleAnnotDecl  x
 
+-- -------------------------------------
+-- InjectivityAnn type families
+type family XCInjectivityAnn  x
+type family XXInjectivityAnn  x
+
 -- =====================================================================
 -- Type families for the HsExpr extension points
 
@@ -825,9 +844,6 @@ type family XIEGroup           x
 type family XIEDoc             x
 type family XIEDocNamed        x
 type family XXIE               x
-
--- -------------------------------------
-
 
 -- =====================================================================
 -- End of Type family definitions

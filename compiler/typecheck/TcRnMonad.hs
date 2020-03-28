@@ -60,7 +60,7 @@ module TcRnMonad(
 
   -- * Error management
   getSrcSpanM, setSrcSpan, addLocM, addLocMA,
-  wrapLocM, wrapLocFstM, wrapLocSndM,wrapLocM_,wrapLocMA,
+  wrapLocM, wrapLocFstM, wrapLocFstMA, wrapLocSndM,wrapLocM_,wrapLocMA,
   getErrsVar, setErrsVar,
   addErr,
   failWith, failAt,
@@ -848,6 +848,12 @@ wrapLocMA fn (L loc a) = setSrcSpan (locA loc) $ do { b <- fn a
 wrapLocFstM :: (a -> TcM (b,c)) -> Located a -> TcM (Located b, c)
 wrapLocFstM fn (L loc a) =
   setSrcSpan loc $ do
+    (b,c) <- fn a
+    return (L loc b, c)
+
+wrapLocFstMA :: (a -> TcM (b,c)) -> LocatedA a -> TcM (LocatedA b, c)
+wrapLocFstMA fn (L loc a) =
+  setSrcSpan (locA loc) $ do
     (b,c) <- fn a
     return (L loc b, c)
 

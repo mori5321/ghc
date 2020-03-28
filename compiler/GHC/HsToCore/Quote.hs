@@ -598,7 +598,7 @@ repInjectivityAnn :: Maybe (LInjectivityAnn GhcRn)
                   -> MetaM (Core (Maybe TH.InjectivityAnn))
 repInjectivityAnn Nothing =
     do { coreNothing injAnnTyConName }
-repInjectivityAnn (Just (L _ (InjectivityAnn lhs rhs))) =
+repInjectivityAnn (Just (L _ (InjectivityAnn _ lhs rhs))) =
     do { lhs'   <- lookupBinder (unLoc lhs)
        ; rhs1   <- mapM (lookupBinder . unLoc) rhs
        ; rhs2   <- coreList nameTyConName rhs1
@@ -840,7 +840,7 @@ repRuleD (L loc (HsRule { rd_name = n
                          ; rhs' <- repLE rhs
                          ; repPragRule n' ty_bndrs' tm_bndrs' lhs' rhs' act' }
            ; wrapGenSyms ss rule  }
-       ; return (loc, rule) }
+       ; return (locA loc, rule) }
 repRuleD (L _ (XRuleDecl nec)) = noExtCon nec
 
 ruleBndrNames :: LRuleBndr GhcRn -> [Name]

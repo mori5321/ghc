@@ -273,7 +273,7 @@ rnImportDecl this_mod
                                      , ideclSource = want_boot, ideclSafe = mod_safe
                                      , ideclQualified = qual_style, ideclImplicit = implicit
                                      , ideclAs = as_mod, ideclHiding = imp_details }))
-  = setSrcSpan loc $ do
+  = setSrcSpan (locA loc) $ do
 
     when (isJust mb_pkg) $ do
         pkg_imports <- xoptM LangExt.PackageImports
@@ -343,7 +343,7 @@ rnImportDecl this_mod
     let
         qual_mod_name = fmap unLoc as_mod `orElse` imp_mod_name
         imp_spec  = ImpDeclSpec { is_mod = imp_mod_name, is_qual = qual_only,
-                                  is_dloc = loc, is_as = qual_mod_name }
+                                  is_dloc = locA loc, is_as = qual_mod_name }
 
     -- filter the imports according to the import declaration
     (new_imp_details, gres) <- filterImports iface imp_spec imp_details
@@ -364,7 +364,7 @@ rnImportDecl this_mod
 
     let imv = ImportedModsVal
             { imv_name        = qual_mod_name
-            , imv_span        = loc
+            , imv_span        = locA loc
             , imv_is_safe     = mod_safe'
             , imv_is_hiding   = is_hiding
             , imv_all_exports = potential_gres
@@ -906,8 +906,8 @@ although we never look up data constructors.
 filterImports
     :: ModIface
     -> ImpDeclSpec                     -- The span for the entire import decl
-    -> Maybe (Bool, Located [LIE GhcPs])    -- Import spec; True => hiding
-    -> RnM (Maybe (Bool, Located [LIE GhcRn]), -- Import spec w/ Names
+    -> Maybe (Bool, LocatedA [LIE GhcPs])    -- Import spec; True => hiding
+    -> RnM (Maybe (Bool, LocatedA [LIE GhcRn]), -- Import spec w/ Names
             [GlobalRdrElt])                   -- Same again, but in GRE form
 filterImports iface decl_spec Nothing
   = return (Nothing, gresFromAvails (Just imp_spec) (mi_exports iface))
@@ -967,7 +967,7 @@ filterImports iface decl_spec (Just (want_hiding, L l import_items))
 
     lookup_lie :: LIE GhcPs -> TcRn [(LIE GhcRn, AvailInfo)]
     lookup_lie (L loc ieRdr)
-        = do (stuff, warns) <- setSrcSpan loc $
+        = do (stuff, warns) <- setSrcSpan (locA loc) $
                                liftM (fromMaybe ([],[])) $
                                run_lookup (lookup_ie ieRdr)
              mapM_ emit_warning warns
@@ -1156,7 +1156,8 @@ gresFromIE decl_spec (L loc ie, avail)
     prov_fn name
       = Just (ImpSpec { is_decl = decl_spec, is_item = item_spec })
       where
-        item_spec = ImpSome { is_explicit = is_explicit name, is_iloc = loc }
+        item_spec = ImpSome { is_explicit = is_explicit name
+                            , is_iloc = locA loc }
 
 
 {-
@@ -1399,7 +1400,7 @@ findImportUsage imports used_gres
     unused_decl decl@(L loc (ImportDecl { ideclHiding = imps }))
       = (decl, used_gres, nameSetElemsStable unused_imps)
       where
-        used_gres = lookupSrcLoc (srcSpanEnd loc) import_usage
+        used_gres = lookupSrcLoc (srcSpanEnd $ locA loc) import_usage
                                -- srcSpanEnd: see Note [The ImportMap]
                     `orElse` []
 
@@ -1499,7 +1500,7 @@ warnUnusedImport flag fld_env (L loc decl, used, unused)
 
   -- Nothing used; drop entire declaration
   | null used
-  = addWarnAt (Reason flag) loc msg1
+  = addWarnAt (Reason flag) (locA loc) msg1
 
   -- Everything imported is used; nop
   | null unused
@@ -1507,7 +1508,7 @@ warnUnusedImport flag fld_env (L loc decl, used, unused)
 
   -- Some imports are unused
   | otherwise
-  = addWarnAt (Reason flag) loc  msg2
+  = addWarnAt (Reason flag) (locA loc)  msg2
 
   where
     msg1 = vcat [ pp_herald <+> quotes pp_mod <+> is_redundant
