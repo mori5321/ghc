@@ -13,6 +13,8 @@
 #include "Cmm.h"
 #include "Updates.h"
 
+import CLOSURE base_GHCziCStringziunpackCStringzh_info;
+
 /* -----------------------------------------------------------------------------
    The code for a thunk that simply extracts a field from a
    single-constructor datatype depends only on the offset of the field
@@ -303,6 +305,6 @@ INFO_TABLE(stg_MK_STRING, 0, 0, FUN_STATIC, "stg_MK_STRING", "stg_MK_STRING")
         Sp_adj(-2);
         Sp(1) = node;
         Sp(0) = stg_bh_upd_frame_info;
-        jump GHCziCStringziunpackCStringzhzuinfo(node);
+        jump base_GHCziCStringziunpackCStringzh_info(StgThunk_payload(node,0));
     }
 }
