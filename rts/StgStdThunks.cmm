@@ -284,3 +284,25 @@ INFO_TABLE(stg_ap_7_upd,7,0,THUNK,"stg_ap_7_upd_info","stg_ap_7_upd_info")
            StgThunk_payload(node,6));
     }
 }
+
+/* -----------------------------------------------------------------------------
+   Making strings
+   -------------------------------------------------------------------------- */
+
+INFO_TABLE(stg_MK_STRING, 0, 0, FUN_STATIC, "stg_MK_STRING", "stg_MK_STRING")
+    (P_ node)
+{
+    W_ newCAF_ret;
+
+    (newCAF_ret) = ccall newCAF(BaseReg "ptr", node "ptr");
+
+    if (newCAF_ret == 0) {
+        LDV_ENTER(node);
+    } else {
+        // TODO: Stack checks?
+        Sp_adj(-2);
+        Sp(1) = node;
+        Sp(0) = stg_bh_upd_frame_info;
+        jump GHCziCStringziunpackCStringzhzuinfo(node);
+    }
+}
