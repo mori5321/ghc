@@ -1275,7 +1275,8 @@ specCase env scrut' case_bndr [(con, args, rhs)]
        ; (rhs', rhs_uds)   <- specExpr env_rhs' rhs
        ; let scrut_bind    = mkDB (NonRec case_bndr_flt scrut')
              case_bndr_set = unitVarSet case_bndr_flt
-             sc_binds      = [(NonRec sc_arg_flt sc_rhs, case_bndr_set)
+             sc_binds      = [ DB { db_bind = NonRec sc_arg_flt sc_rhs
+                                  , db_fvs  = case_bndr_set }
                              | (sc_arg_flt, sc_rhs) <- sc_args_flt `zip` sc_rhss ]
              flt_binds     = scrut_bind : sc_binds
              (free_uds, dumped_dbs) = dumpUDs (case_bndr':args') rhs_uds
@@ -1392,7 +1393,7 @@ specBind rhs_env (NonRec fn rhs) body_uds
          else
              -- No call in final_uds mentions bound variables,
              -- so we can just leave the binding here
-              return (map fst final_binds, free_uds) }
+              return (map db_bind final_binds, free_uds) }
 
 
 specBind rhs_env (Rec pairs) body_uds
@@ -1419,7 +1420,7 @@ specBind rhs_env (Rec pairs) body_uds
        ; if float_all then
               return ([], final_uds `snocDictBind` final_bind)
          else
-              return ([fst final_bind], final_uds) }
+              return ([db_bind final_bind], final_uds) }
 
 
 ---------------------------
@@ -1820,9 +1821,10 @@ bindAuxiliaryDicts env@(SE { se_subst = subst, se_interesting = interesting })
                                   `GHC.Core.Subst.extendInScopeList` dx_ids
                , se_interesting = interesting `unionVarSet` interesting_dicts }
 
-    dx_ids = [dx_id | (NonRec dx_id _, _) <- dx_binds]
-    interesting_dicts = mkVarSet [ dx_id | (NonRec dx_id dx, _) <- dx_binds
-                                 , interestingDict env dx ]
+    dx_ids = [dx_id | DB { db_bind = NonRec dx_id _ } <- dx_binds]
+    interesting_dicts
+      = mkVarSet [ dx_id | DB { db_bind = NonRec dx_id dx } <- dx_binds
+                         , interestingDict env dx ]
                   -- See Note [Make the new dictionaries interesting]
 
     go :: [CoreExpr] -> [CoreBndr] -> ([DictBind], [CoreExpr])
@@ -1887,8 +1889,10 @@ In general, we need only make this Rec if
 Note [Avoiding loops]
 ~~~~~~~~~~~~~~~~~~~~~
 When specialising /dictionary functions/ we must be very careful to
-avoid building loops. Here is an example that bit us badly: #3591
+avoid building loops. Here is an example that bit us badly, on
+several distinct occasions.
 
+Here is one: #3591
      class Eq a => C a
      instance Eq [a] => C [a]
 
@@ -2169,7 +2173,7 @@ data UsageDetails
 
 -- | A 'DictBind' is a binding along with a cached set containing its free
 -- variables (both type variables and dictionaries)
-type DictBind = (CoreBind, VarSet)
+data DictBind = DB { db_bind :: CoreBind, db_fvs :: VarSet }
 
 {- Note [Floated dictionary bindings]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2197,6 +2201,11 @@ successfully specialise 'f'.
 So the DictBinds in (ud_binds :: Bag DictBind) may contain
 non-dictionary bindings too.
 -}
+
+instance Outputable DictBind where
+  ppr (DB { db_bind = bind, db_fvs = fvs })
+    = text "DB" <+> braces (sep [ text "bind:" <+> ppr bind
+                                , text "fvs: " <+> ppr fvs ])
 
 instance Outputable UsageDetails where
   ppr (MkUD { ud_binds = dbs, ud_calls = calls })
@@ -2248,8 +2257,8 @@ ppr_call_key_ty (SpecDict _)  = Nothing
 ppr_call_key_ty UnspecArg     = Nothing
 
 instance Outputable CallInfo where
-  ppr (CI { ci_key = key, ci_fvs = fvs })
-    = text "CI" <> braces (hsep [ fsep (mapMaybe ppr_call_key_ty key), ppr fvs ])
+  ppr (CI { ci_key = key, ci_fvs = _fvs })
+    = text "CI" <> braces (sep (map ppr key))
 
 unionCalls :: CallDetails -> CallDetails -> CallDetails
 unionCalls c1 c2 = plusDVarEnv_C unionCallInfoSet c1 c2
@@ -2435,11 +2444,11 @@ plusUDs (MkUD {ud_binds = db1, ud_calls = calls1})
 
 -----------------------------
 _dictBindBndrs :: Bag DictBind -> [Id]
-_dictBindBndrs dbs = foldr ((++) . bindersOf . fst) [] dbs
+_dictBindBndrs dbs = foldr ((++) . bindersOf . db_bind) [] dbs
 
 -- | Construct a 'DictBind' from a 'CoreBind'
 mkDB :: CoreBind -> DictBind
-mkDB bind = (bind, bind_fvs bind)
+mkDB bind = DB { db_bind = bind, db_fvs = bind_fvs bind }
 
 -- | Identify the free variables of a 'CoreBind'
 bind_fvs :: CoreBind -> VarSet
@@ -2470,17 +2479,18 @@ pair_fvs (bndr, rhs) = exprSomeFreeVars interesting rhs
 
 -- | Flatten a set of "dumped" 'DictBind's, and some other binding
 -- pairs, into a single recursive binding.
-recWithDumpedDicts :: [(Id,CoreExpr)] -> Bag DictBind ->DictBind
+recWithDumpedDicts :: [(Id,CoreExpr)] -> Bag DictBind -> DictBind
 recWithDumpedDicts pairs dbs
-  = (Rec bindings, fvs)
+  = DB { db_bind = Rec bindings, db_fvs = fvs }
   where
-    (bindings, fvs) = foldr add
-                               ([], emptyVarSet)
-                               (dbs `snocBag` mkDB (Rec pairs))
-    add (NonRec b r, fvs') (pairs, fvs) =
-      ((b,r) : pairs, fvs `unionVarSet` fvs')
-    add (Rec prs1,   fvs') (pairs, fvs) =
-      (prs1 ++ pairs, fvs `unionVarSet` fvs')
+    (bindings, fvs) = foldr add ([], emptyVarSet)
+                                (dbs `snocBag` mkDB (Rec pairs))
+    add (DB { db_bind = bind, db_fvs = fvs }) (prs_acc, fvs_acc)
+      = case bind of
+          NonRec b r -> ((b,r) : prs_acc, fvs')
+          Rec prs1   -> (prs1 ++ prs_acc, fvs')
+      where
+        fvs' = fvs_acc `unionVarSet` fvs
 
 snocDictBinds :: UsageDetails -> [DictBind] -> UsageDetails
 -- Add ud_binds to the tail end of the bindings in uds
@@ -2500,13 +2510,13 @@ wrapDictBinds :: Bag DictBind -> [CoreBind] -> [CoreBind]
 wrapDictBinds dbs binds
   = foldr add binds dbs
   where
-    add (bind,_) binds = bind : binds
+    add (DB { db_bind = bind }) binds = bind : binds
 
 wrapDictBindsE :: Bag DictBind -> CoreExpr -> CoreExpr
 wrapDictBindsE dbs expr
   = foldr add expr dbs
   where
-    add (bind,_) expr = Let bind expr
+    add (DB { db_bind = bind }) expr = Let bind expr
 
 ----------------------
 dumpUDs :: [CoreBndr] -> UsageDetails -> (UsageDetails, Bag DictBind)
@@ -2568,9 +2578,10 @@ filterCalls (CIS fn call_bag) dbs
       --   (_,_,dump_set) = splitDictBinds dbs {fn}
       -- But this variant is shorter
 
-    go so_far (db,fvs) | fvs `intersectsVarSet` so_far
-                       = extendVarSetList so_far (bindersOf db)
-                       | otherwise = so_far
+    go so_far (DB { db_bind = bind, db_fvs = fvs })
+       | fvs `intersectsVarSet` so_far
+       = extendVarSetList so_far (bindersOf bind)
+       | otherwise = so_far
 
     ok_call (CI { ci_fvs = fvs }) = not (fvs `intersectsVarSet` dump_set)
 
@@ -2587,8 +2598,9 @@ splitDictBinds dbs bndr_set
                 -- Important that it's foldl' not foldr;
                 -- we're accumulating the set of dumped ids in dump_set
    where
-    split_db (free_dbs, dump_dbs, dump_idset) db@(bind, fvs)
-        | dump_idset `intersectsVarSet` fvs     -- Dump it
+    split_db (free_dbs, dump_dbs, dump_idset) db
+        | DB { db_bind = bind, db_fvs = fvs } <- db
+        , dump_idset `intersectsVarSet` fvs     -- Dump it
         = (free_dbs, dump_dbs `snocBag` db,
            extendVarSetList dump_idset (bindersOf bind))
 
